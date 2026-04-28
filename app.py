@@ -10,7 +10,7 @@ import requests
 import streamlit as st
 from PIL import Image, ImageDraw
 
-API = "http://localhost:8000"
+API = "https://amelakh-docker.hf.space"
 
 st.set_page_config(
     page_title="CGAN Colorizer",
@@ -19,30 +19,23 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ────────────────────────────────────────────────────────────────
-# 🔷 MODERN DESIGN - LARGE BUTTONS + ELEGANT TYPOGRAPHY
-# ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
-* {
-    font-family: 'Space Grotesk', sans-serif;
-}
+* { font-family: 'Space Grotesk', sans-serif; }
 
 .stApp {
     background: radial-gradient(ellipse at 20% 30%, #0a0a1a, #02020a);
     background-attachment: fixed;
 }
 
-/* Sidebar */
 [data-testid="stSidebar"] {
     background: rgba(8, 8, 18, 0.8) !important;
     backdrop-filter: blur(20px);
     border-right: 1px solid rgba(255,255,255,0.05);
 }
 
-/* ─── LARGE BUTTONS ─── */
 .stButton > button {
     background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
     color: white;
@@ -63,11 +56,8 @@ st.markdown("""
     box-shadow: 0 12px 28px rgba(124, 58, 237, 0.4);
 }
 
-.stButton > button:active {
-    transform: translateY(1px);
-}
+.stButton > button:active { transform: translateY(1px); }
 
-/* Large download buttons */
 .stDownloadButton > button {
     background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
     padding: 0.8rem 1.8rem !important;
@@ -75,7 +65,6 @@ st.markdown("""
     border-radius: 60px;
 }
 
-/* File uploader - larger */
 [data-testid="stFileUploader"] {
     background: rgba(255,255,255,0.02);
     border: 2px dashed rgba(124, 58, 237, 0.4);
@@ -89,7 +78,6 @@ st.markdown("""
     background: rgba(124, 58, 237, 0.05);
 }
 
-/* Metrics cards */
 [data-testid="metric-container"] {
     background: rgba(20, 20, 40, 0.6);
     backdrop-filter: blur(12px);
@@ -98,7 +86,6 @@ st.markdown("""
     padding: 1.2rem;
 }
 
-/* Tabs styling */
 [data-baseweb="tab-list"] {
     gap: 12px;
     background: transparent;
@@ -121,7 +108,6 @@ st.markdown("""
     border: none !important;
 }
 
-/* Elegant titles */
 h1 {
     background: linear-gradient(135deg, #ffffff, #c084fc, #a855f7);
     background-clip: text;
@@ -143,7 +129,6 @@ h2 {
     font-size: 1.8rem;
 }
 
-/* Expander */
 .streamlit-expanderHeader {
     background: rgba(30,30,55,0.4) !important;
     border-radius: 20px !important;
@@ -151,14 +136,12 @@ h2 {
     padding: 1rem !important;
 }
 
-/* Slider */
 [data-testid="stSlider"] {
     background: rgba(30,30,55,0.5);
     border-radius: 60px;
     padding: 0.8rem 1rem;
 }
 
-/* Info/Success/Warning */
 .stAlert {
     background: rgba(20,20,40,0.7) !important;
     backdrop-filter: blur(12px);
@@ -166,11 +149,7 @@ h2 {
     border: 1px solid rgba(255,255,255,0.1);
 }
 
-/* Caption */
-.stCaption {
-    color: #9ca3af !important;
-    font-size: 0.8rem;
-}
+.stCaption { color: #9ca3af !important; font-size: 0.8rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -185,9 +164,24 @@ def pil_to_bytes(img: Image.Image) -> bytes:
     img.save(buf, format="PNG")
     return buf.getvalue()
 
+def compress_image_for_upload(pil_img: Image.Image, max_size: int = 1024) -> bytes:
+    """
+    ✅ FIX LENTEUR : Redimensionne + compresse l'image avant envoi à l'API.
+    Réduit drastiquement le temps de transfert et de traitement.
+    """
+    img = pil_img.copy()
+    # Redimensionner si trop grande
+    if max(img.size) > max_size:
+        img.thumbnail((max_size, max_size), Image.LANCZOS)
+    # Convertir en JPEG compressé
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=85, optimize=True)
+    return buf.getvalue()
+
 def api_get(path: str):
     try:
-        r = requests.get(f"{API}{path}", timeout=6)
+        # ✅ FIX TIMEOUT : 30s au lieu de 6s
+        r = requests.get(f"{API}{path}", timeout=30)
         r.raise_for_status()
         return r.json(), None
     except Exception as e:
@@ -195,7 +189,11 @@ def api_get(path: str):
 
 def api_post_file(path: str, file_bytes: bytes, filename: str):
     try:
-        r = requests.post(f"{API}{path}", files={"file": (filename, file_bytes, "image/jpeg")}, timeout=70)
+        r = requests.post(
+            f"{API}{path}",
+            files={"file": (filename, file_bytes, "image/jpeg")},
+            timeout=120  # ✅ FIX TIMEOUT : 120s pour les grandes images
+        )
         r.raise_for_status()
         return r.json(), None
     except Exception as e:
@@ -203,13 +201,14 @@ def api_post_file(path: str, file_bytes: bytes, filename: str):
 
 def api_delete(path: str):
     try:
-        requests.delete(f"{API}{path}", timeout=5)
+        # ✅ FIX TIMEOUT : 30s au lieu de 5s
+        requests.delete(f"{API}{path}", timeout=30)
         return True, None
     except Exception as e:
         return False, str(e)
 
 # ────────────────────────────────────────────────────────────────
-# SIDEBAR - Minimal & clean
+# SIDEBAR
 # ────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -234,6 +233,14 @@ with st.sidebar:
             <span style='font-size: 0.8rem;'>● offline</span>
         </div>
         """, unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("""
+    <div style='color: #6b7280; font-size: 0.75rem; padding: 0.5rem;'>
+        <p>⚡ Images are resized to 1024px max before upload for faster processing.</p>
+        <p>💾 History is stored per session on the server.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ────────────────────────────────────────────────────────────────
 # MAIN TABS
@@ -261,28 +268,42 @@ with tab1:
         original_pil = Image.open(uploaded).convert("RGB")
         w, h = original_pil.size
 
-        # Two large columns
+        # Calcul de la taille après compression
+        will_resize = max(w, h) > 1024
+        size_info = f"📐 {w} × {h} px  ·  {uploaded.name}"
+        if will_resize:
+            ratio = 1024 / max(w, h)
+            new_w, new_h = int(w * ratio), int(h * ratio)
+            size_info += f"  ·  ⚡ will resize to {new_w}×{new_h} for faster upload"
+
         col_left, col_right = st.columns([1, 2])
         with col_left:
             run = st.button("🎨 GENERATE COLOR", use_container_width=True, type="primary")
         with col_right:
-            st.caption(f"📐 {w} × {h} px  ·  {uploaded.name}")
+            st.caption(size_info)
 
         if run:
-            with st.spinner("processing image..."):
-                result, err = api_post_file("/colorize", uploaded.getvalue(), uploaded.name)
-            
+            # ✅ COMPRESSION AVANT ENVOI
+            with st.spinner("compressing image..."):
+                compressed_bytes = compress_image_for_upload(original_pil, max_size=1024)
+
+            compressed_kb = len(compressed_bytes) / 1024
+            original_kb = uploaded.size / 1024
+
+            with st.spinner(f"sending {compressed_kb:.0f} KB to API (was {original_kb:.0f} KB)..."):
+                result, err = api_post_file("/colorize", compressed_bytes, uploaded.name)
+
             if err:
                 st.error(f"error: {err}")
             else:
                 output_pil = b64_to_pil(result["output_b64"])
                 duration = result["duration_ms"]
 
-                st.success(f"✓ colorized in {duration:.0f} ms")
-                
+                st.success(f"✓ colorized in {duration:.0f} ms  ·  sent {compressed_kb:.0f} KB (original: {original_kb:.0f} KB)")
+
                 # Large comparison slider
                 st.markdown("#### — interactive comparison —")
-                
+
                 slider_val = st.slider(
                     "",
                     0, 100, 50,
@@ -290,11 +311,11 @@ with tab1:
                     key="compare"
                 )
 
-                # Build comparison image
+                # Build comparison image using original (not compressed) for display
                 target_w = 900
                 ratio = target_w / w
                 disp_h = int(h * ratio)
-                
+
                 orig_resized = original_pil.resize((target_w, disp_h))
                 out_resized = output_pil.resize((target_w, disp_h))
 
@@ -305,23 +326,21 @@ with tab1:
 
                 draw = ImageDraw.Draw(composite)
                 for offset in [-2, 0, 2]:
-                    draw.line([(split_x + offset, 0), (split_x + offset, disp_h)], fill=(255,255,255,180), width=2)
-                
+                    draw.line([(split_x + offset, 0), (split_x + offset, disp_h)], fill=(255, 255, 255, 180), width=2)
+
                 center_x, center_y = split_x, disp_h // 2
-                draw.ellipse([center_x-22, center_y-22, center_x+22, center_y+22], fill="white")
-                draw.ellipse([center_x-16, center_y-16, center_x+16, center_y+16], fill="#7c3aed")
+                draw.ellipse([center_x - 22, center_y - 22, center_x + 22, center_y + 22], fill="white")
+                draw.ellipse([center_x - 16, center_y - 16, center_x + 16, center_y + 16], fill="#7c3aed")
 
                 st.image(composite, use_container_width=True)
-                
-                # Labels
+
                 lcol, mcol, rcol = st.columns(3)
                 lcol.markdown("<p style='text-align: center; color: #9ca3af;'>◀ original</p>", unsafe_allow_html=True)
                 mcol.markdown(f"<p style='text-align: center; color: #9ca3af;'>slider: {slider_val}%</p>", unsafe_allow_html=True)
                 rcol.markdown("<p style='text-align: center; color: #9ca3af;'>colorized ▶</p>", unsafe_allow_html=True)
 
                 st.divider()
-                
-                # Large download button
+
                 col_d1, col_d2, col_d3 = st.columns([1, 2, 1])
                 with col_d2:
                     st.download_button(
@@ -332,7 +351,6 @@ with tab1:
                         use_container_width=True,
                     )
     else:
-        # Empty state - visually appealing
         st.markdown("""
         <div style='text-align: center; padding: 4rem 2rem;'>
             <div style='font-size: 5rem; opacity: 0.4;'>🖼</div>
@@ -346,7 +364,7 @@ with tab1:
 # ════════════════════════════════════════════════════════════════
 with tab2:
     st.markdown("<h2 style='text-align: center; margin-bottom: 1.5rem;'>history</h2>", unsafe_allow_html=True)
-    
+
     col_ref, col_clr = st.columns(2)
     with col_ref:
         if st.button("⟳ refresh", use_container_width=True):
@@ -359,9 +377,9 @@ with tab2:
     st.divider()
 
     history, err = api_get("/history?limit=25")
-    
+
     if err:
-        st.error(err)
+        st.error(f"⚠️ Could not load history: {err}\n\nThe server may be waking up, try refreshing in a few seconds.")
     elif not history:
         st.info("no colorizations yet — start with the colorize tab")
     else:
@@ -373,7 +391,7 @@ with tab2:
                 with col_b:
                     out_img = b64_to_pil(item["output_b64"])
                     st.image(out_img, caption="colorized", use_container_width=True)
-                
+
                 dcol, xcol = st.columns(2)
                 with dcol:
                     st.download_button(
@@ -392,37 +410,41 @@ with tab2:
 # ════════════════════════════════════════════════════════════════
 with tab3:
     st.markdown("<h2 style='text-align: center; margin-bottom: 1.5rem;'>statistics</h2>", unsafe_allow_html=True)
-    
+
     stats, err = api_get("/stats")
-    
+
     if err:
-        st.error(err)
+        st.error(f"⚠️ Could not load stats: {err}\n\nThe server may be waking up, try refreshing.")
     elif not stats or stats.get("total", 0) == 0:
         st.info("no data available — colorize an image first")
     else:
-        total = stats.get("total", 0)
-        avg_ms = stats.get("avg_ms", 0) or 0
-        min_ms = stats.get("min_ms", 0) or 0
-        max_ms = stats.get("max_ms", 0) or 0
-        days = stats.get("active_days", 0)
+        total   = stats.get("total", 0)
+        avg_ms  = stats.get("avg_ms", 0) or 0
+        min_ms  = stats.get("min_ms", 0) or 0
+        max_ms  = stats.get("max_ms", 0) or 0
+        days    = stats.get("active_days", 0)
 
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("total images", total)
-        m2.metric("average", f"{avg_ms:.0f} ms")
-        m3.metric("fastest", f"{min_ms:.0f} ms")
-        m4.metric("slowest", f"{max_ms:.0f} ms")
-        m5.metric("active days", days)
+        m2.metric("average",      f"{avg_ms:.0f} ms")
+        m3.metric("fastest",      f"{min_ms:.0f} ms")
+        m4.metric("slowest",      f"{max_ms:.0f} ms")
+        m5.metric("active days",  days)
 
-        if total > 0:
-            st.divider()
-            st.markdown("#### performance trend")
-            
-            history, _ = api_get("/history?limit=100")
-            if history:
-                import pandas as pd
-                df = pd.DataFrame(history)[["created_at", "duration_ms"]].sort_values("created_at")
-                df.columns = ["timestamp", "ms"]
-                st.line_chart(df.set_index("timestamp")["ms"], use_container_width=True)
-                
-                st.markdown("#### detailed log")
-                st.dataframe(df, use_container_width=True, hide_index=True)
+        st.divider()
+        st.markdown("#### performance trend")
+
+        history_data, _ = api_get("/history?limit=100")
+        if history_data and len(history_data) >= 2:
+            import pandas as pd
+            df = (
+                pd.DataFrame(history_data)[["created_at", "duration_ms"]]
+                .sort_values("created_at")
+                .rename(columns={"created_at": "timestamp", "duration_ms": "ms"})
+            )
+            st.line_chart(df.set_index("timestamp")["ms"], use_container_width=True)
+
+            st.markdown("#### detailed log")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("📊 Need at least 2 colorizations to show the performance trend.")
