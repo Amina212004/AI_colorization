@@ -27,7 +27,7 @@ from pydantic import BaseModel
 DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
 IMG_SIZE   = 256
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))  # ← abspath = toujours correct
-MODEL_PATH = os.path.join(BASE_DIR, "model", "best_cgan.pth")
+MODEL_PATH = os.path.join(BASE_DIR, "model", "best_cgan_V1.pth")
 DB_PATH    = os.path.join(BASE_DIR, "..", "data", "history.db")
 app = FastAPI(title="Colorisation CGAN API", version="1.0.0")
 
