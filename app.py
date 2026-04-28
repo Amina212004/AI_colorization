@@ -8,7 +8,7 @@ import io
 import base64
 import requests
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw
 
 API = "https://amelakh-docker.hf.space"
 
@@ -50,10 +50,12 @@ st.markdown("""
     width: 100%;
     cursor: pointer;
 }
+
 .stButton > button:hover {
     transform: translateY(-3px);
     box-shadow: 0 12px 28px rgba(124, 58, 237, 0.4);
 }
+
 .stButton > button:active { transform: translateY(1px); }
 
 .stDownloadButton > button {
@@ -70,6 +72,7 @@ st.markdown("""
     padding: 3rem 2rem;
     transition: 0.25s;
 }
+
 [data-testid="stFileUploader"]:hover {
     border-color: #8b5cf6;
     background: rgba(124, 58, 237, 0.05);
@@ -88,6 +91,7 @@ st.markdown("""
     background: transparent;
     margin-bottom: 2rem;
 }
+
 [data-baseweb="tab"] {
     background: rgba(30,30,55,0.4) !important;
     border-radius: 60px !important;
@@ -97,6 +101,7 @@ st.markdown("""
     font-weight: 500;
     font-size: 1rem;
 }
+
 [aria-selected="true"] {
     background: linear-gradient(135deg, #7c3aed, #a855f7) !important;
     color: white !important;
@@ -114,6 +119,7 @@ h1 {
     text-align: center;
     margin-bottom: 0.5rem;
 }
+
 h2 {
     background: linear-gradient(135deg, #e0e0ff, #c084fc);
     background-clip: text;
@@ -129,17 +135,20 @@ h2 {
     font-weight: 500;
     padding: 1rem !important;
 }
+
 [data-testid="stSlider"] {
     background: rgba(30,30,55,0.5);
     border-radius: 60px;
     padding: 0.8rem 1rem;
 }
+
 .stAlert {
     background: rgba(20,20,40,0.7) !important;
     backdrop-filter: blur(12px);
     border-radius: 20px !important;
     border: 1px solid rgba(255,255,255,0.1);
 }
+
 .stCaption { color: #9ca3af !important; font-size: 0.8rem; }
 </style>
 """, unsafe_allow_html=True)
@@ -156,28 +165,22 @@ def pil_to_bytes(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 def compress_image_for_upload(pil_img: Image.Image, max_size: int = 1024) -> bytes:
-    """Redimensionne + compresse avant envoi → upload beaucoup plus rapide."""
+    """
+    ✅ FIX LENTEUR : Redimensionne + compresse l'image avant envoi à l'API.
+    Réduit drastiquement le temps de transfert et de traitement.
+    """
     img = pil_img.copy()
+    # Redimensionner si trop grande
     if max(img.size) > max_size:
         img.thumbnail((max_size, max_size), Image.LANCZOS)
+    # Convertir en JPEG compressé
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="JPEG", quality=85, optimize=True)
     return buf.getvalue()
 
-def enhance_image(img: Image.Image, sharpness: float, saturation: float, contrast: float) -> Image.Image:
-    """
-    ✅ POST-PROCESSING côté frontend.
-    Corrige le flou naturel du modèle CGAN sans modifier le backend.
-    """
-    # UnsharpMask : corrige le flou de l'upscale du modèle
-    img = img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=120, threshold=3))
-    img = ImageEnhance.Sharpness(img).enhance(sharpness)
-    img = ImageEnhance.Color(img).enhance(saturation)
-    img = ImageEnhance.Contrast(img).enhance(contrast)
-    return img
-
 def api_get(path: str):
     try:
+        # ✅ FIX TIMEOUT : 30s au lieu de 6s
         r = requests.get(f"{API}{path}", timeout=30)
         r.raise_for_status()
         return r.json(), None
@@ -189,7 +192,7 @@ def api_post_file(path: str, file_bytes: bytes, filename: str):
         r = requests.post(
             f"{API}{path}",
             files={"file": (filename, file_bytes, "image/jpeg")},
-            timeout=120,
+            timeout=120  # ✅ FIX TIMEOUT : 120s pour les grandes images
         )
         r.raise_for_status()
         return r.json(), None
@@ -198,6 +201,7 @@ def api_post_file(path: str, file_bytes: bytes, filename: str):
 
 def api_delete(path: str):
     try:
+        # ✅ FIX TIMEOUT : 30s au lieu de 5s
         requests.delete(f"{API}{path}", timeout=30)
         return True, None
     except Exception as e:
@@ -216,40 +220,25 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     st.divider()
 
-    # Status
     health, _ = api_get("/health")
     if health and health.get("model_loaded"):
         st.markdown("""
-        <div style='background: rgba(34,197,94,0.08); border-radius: 40px; padding: 0.8rem;
-                    text-align: center; border: 0.5px solid rgba(34,197,94,0.3);'>
+        <div style='background: rgba(34,197,94,0.08); border-radius: 40px; padding: 0.8rem; text-align: center; border: 0.5px solid rgba(34,197,94,0.3);'>
             <span style='font-size: 0.8rem;'>● system ready</span>
         </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
-        <div style='background: rgba(239,68,68,0.08); border-radius: 40px; padding: 0.8rem;
-                    text-align: center; border: 0.5px solid rgba(239,68,68,0.3);'>
+        <div style='background: rgba(239,68,68,0.08); border-radius: 40px; padding: 0.8rem; text-align: center; border: 0.5px solid rgba(239,68,68,0.3);'>
             <span style='font-size: 0.8rem;'>● offline</span>
         </div>
         """, unsafe_allow_html=True)
 
     st.divider()
-
-    # ✅ POST-PROCESSING SLIDERS
-    st.markdown("<p style='color: #c084fc; font-weight: 600; font-size: 0.9rem;'>🎛 Post-processing</p>", unsafe_allow_html=True)
-
-    sharpness  = st.slider("✨ Sharpness",  0.5, 3.0, 1.3, 0.1,
-                           help="Corrige le flou du modèle. 1.3 recommandé.")
-    saturation = st.slider("🎨 Saturation", 0.5, 3.0, 1.2, 0.1,
-                           help="Intensité des couleurs. 1.2 recommandé.")
-    contrast   = st.slider("⚡ Contrast",   0.5, 2.0, 1.0, 0.1,
-                           help="Contraste de l'image finale. 1.0 = neutre.")
-
-    st.divider()
     st.markdown("""
-    <div style='color: #6b7280; font-size: 0.72rem; padding: 0.3rem;'>
-        ⚡ Images resized to 1024px max before upload.<br>
-        💾 History stored per server session.
+    <div style='color: #6b7280; font-size: 0.75rem; padding: 0.5rem;'>
+        <p>⚡ Images are resized to 1024px max before upload for faster processing.</p>
+        <p>💾 History is stored per session on the server.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -279,12 +268,13 @@ with tab1:
         original_pil = Image.open(uploaded).convert("RGB")
         w, h = original_pil.size
 
+        # Calcul de la taille après compression
         will_resize = max(w, h) > 1024
-        size_info   = f"📐 {w} × {h} px  ·  {uploaded.name}"
+        size_info = f"📐 {w} × {h} px  ·  {uploaded.name}"
         if will_resize:
-            ratio        = 1024 / max(w, h)
+            ratio = 1024 / max(w, h)
             new_w, new_h = int(w * ratio), int(h * ratio)
-            size_info   += f"  ·  ⚡ will resize to {new_w}×{new_h}"
+            size_info += f"  ·  ⚡ will resize to {new_w}×{new_h} for faster upload"
 
         col_left, col_right = st.columns([1, 2])
         with col_left:
@@ -293,62 +283,61 @@ with tab1:
             st.caption(size_info)
 
         if run:
+            # ✅ COMPRESSION AVANT ENVOI
             with st.spinner("compressing image..."):
                 compressed_bytes = compress_image_for_upload(original_pil, max_size=1024)
 
             compressed_kb = len(compressed_bytes) / 1024
-            original_kb   = uploaded.size / 1024
+            original_kb = uploaded.size / 1024
 
-            with st.spinner(f"colorizing... ({compressed_kb:.0f} KB sent, was {original_kb:.0f} KB)"):
+            with st.spinner(f"sending {compressed_kb:.0f} KB to API (was {original_kb:.0f} KB)..."):
                 result, err = api_post_file("/colorize", compressed_bytes, uploaded.name)
 
             if err:
                 st.error(f"error: {err}")
             else:
-                # ✅ POST-PROCESSING APPLIQUÉ ICI
-                raw_pil    = b64_to_pil(result["output_b64"])
-                output_pil = enhance_image(raw_pil, sharpness, saturation, contrast)
-                duration   = result["duration_ms"]
+                output_pil = b64_to_pil(result["output_b64"])
+                duration = result["duration_ms"]
 
-                st.success(
-                    f"✓ colorized in {duration:.0f} ms  ·  "
-                    f"sharpness {sharpness}  ·  saturation {saturation}  ·  contrast {contrast}"
-                )
+                st.success(f"✓ colorized in {duration:.0f} ms  ·  sent {compressed_kb:.0f} KB (original: {original_kb:.0f} KB)")
 
+                # Large comparison slider
                 st.markdown("#### — interactive comparison —")
 
                 slider_val = st.slider(
-                    "", 0, 100, 50,
+                    "",
+                    0, 100, 50,
                     label_visibility="collapsed",
                     key="compare"
                 )
 
-                # Build comparison image
-                target_w     = 900
-                ratio        = target_w / w
-                disp_h       = int(h * ratio)
-                orig_resized = original_pil.resize((target_w, disp_h))
-                out_resized  = output_pil.resize((target_w, disp_h))
+                # Build comparison image using original (not compressed) for display
+                target_w = 900
+                ratio = target_w / w
+                disp_h = int(h * ratio)
 
-                split_x   = int(target_w * slider_val / 100)
+                orig_resized = original_pil.resize((target_w, disp_h))
+                out_resized = output_pil.resize((target_w, disp_h))
+
+                split_x = int(target_w * slider_val / 100)
                 composite = Image.new("RGB", (target_w, disp_h))
                 composite.paste(orig_resized.crop((0, 0, split_x, disp_h)), (0, 0))
                 composite.paste(out_resized.crop((split_x, 0, target_w, disp_h)), (split_x, 0))
 
                 draw = ImageDraw.Draw(composite)
                 for offset in [-2, 0, 2]:
-                    draw.line([(split_x + offset, 0), (split_x + offset, disp_h)],
-                              fill=(255, 255, 255, 180), width=2)
-                cx, cy = split_x, disp_h // 2
-                draw.ellipse([cx-22, cy-22, cx+22, cy+22], fill="white")
-                draw.ellipse([cx-16, cy-16, cx+16, cy+16], fill="#7c3aed")
+                    draw.line([(split_x + offset, 0), (split_x + offset, disp_h)], fill=(255, 255, 255, 180), width=2)
+
+                center_x, center_y = split_x, disp_h // 2
+                draw.ellipse([center_x - 22, center_y - 22, center_x + 22, center_y + 22], fill="white")
+                draw.ellipse([center_x - 16, center_y - 16, center_x + 16, center_y + 16], fill="#7c3aed")
 
                 st.image(composite, use_container_width=True)
 
                 lcol, mcol, rcol = st.columns(3)
-                lcol.markdown("<p style='text-align:center;color:#9ca3af;'>◀ original</p>",            unsafe_allow_html=True)
-                mcol.markdown(f"<p style='text-align:center;color:#9ca3af;'>slider: {slider_val}%</p>", unsafe_allow_html=True)
-                rcol.markdown("<p style='text-align:center;color:#9ca3af;'>colorized ▶</p>",           unsafe_allow_html=True)
+                lcol.markdown("<p style='text-align: center; color: #9ca3af;'>◀ original</p>", unsafe_allow_html=True)
+                mcol.markdown(f"<p style='text-align: center; color: #9ca3af;'>slider: {slider_val}%</p>", unsafe_allow_html=True)
+                rcol.markdown("<p style='text-align: center; color: #9ca3af;'>colorized ▶</p>", unsafe_allow_html=True)
 
                 st.divider()
 
@@ -429,11 +418,11 @@ with tab3:
     elif not stats or stats.get("total", 0) == 0:
         st.info("no data available — colorize an image first")
     else:
-        total  = stats.get("total", 0)
-        avg_ms = stats.get("avg_ms", 0) or 0
-        min_ms = stats.get("min_ms", 0) or 0
-        max_ms = stats.get("max_ms", 0) or 0
-        days   = stats.get("active_days", 0)
+        total   = stats.get("total", 0)
+        avg_ms  = stats.get("avg_ms", 0) or 0
+        min_ms  = stats.get("min_ms", 0) or 0
+        max_ms  = stats.get("max_ms", 0) or 0
+        days    = stats.get("active_days", 0)
 
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("total images", total)
