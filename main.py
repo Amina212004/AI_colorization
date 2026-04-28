@@ -11,7 +11,7 @@ import base64
 import sqlite3
 from datetime import datetime
 from contextlib import contextmanager
-
+from huggingface_hub import hf_hub_download
 import torch
 import torch.nn as nn
 import torchvision.transforms as T
@@ -27,8 +27,11 @@ from pydantic import BaseModel
 DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
 IMG_SIZE   = 256
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))  # ← abspath = toujours correct
-MODEL_PATH = os.path.join(BASE_DIR, "model", "best_cgan_V1.pth")
-DB_PATH    = os.path.join(BASE_DIR, "..", "data", "history.db")
+MODEL_PATH = hf_hub_download(
+    repo_id="amelakh/best_cgan_V1",
+    filename="best_cgan_V1.pth"
+)
+DB_PATH = "/tmp/history.db"
 app = FastAPI(title="Colorisation CGAN API", version="1.0.0")
 
 app.add_middleware(
